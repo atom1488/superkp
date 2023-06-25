@@ -1,0 +1,14 @@
+{
+  "name": "superkp",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "repository": "git@github.com:atom1488/superkp.git",
+  "author": "atomkern <81935062+atom1488@users.noreply.github.com>",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "discord.js": "^14.11.0",
+    "dotenv": "^16.3.1",
+    "glob": "^10.3.0",
+    "util": "^0.12.5"
+  }
+}
