@@ -5,6 +5,7 @@ export default new Command({
   name: "iqtest",
   description: "reponds en envoyant le TEST DE QI",
   run: async ({ interaction }) => {
+    return await interaction.followUp('oki');
     let createdChannel = await interaction.guild?.channels.create({
       name: interaction.user.username,
       type: ChannelType.GuildText,
@@ -71,35 +72,35 @@ export default new Command({
     const secondQuestion = new EmbedBuilder()
       .setColor("DarkAqua")
       .setTitle("Seconde Question")
-      .setDescription("Où se situe le Maghreb ?");
+      .setDescription("a faire desoler...");
 
-      const question2 = await createdChannel.send({
-        embeds: [secondQuestion],
-        components: [
-          {
-            type: 1,
-            components: [
-              {
-                type: 2,
-                style: 1,
-                label: "Moyen-Orient",
-                custom_id: "con1",
-              },
-              {
-                type: 2,
-                style: 1,
-                label: "Région Parisienne",
-                custom_id: "con2",
-              },
-              {
-                type: 2,
-                style: 1,
-                label: "Afrique du Nord",
-                custom_id: "iq",
-              },
-            ],
-          },
-        ],
-      });
+    const question2 = await createdChannel.send({
+      embeds: [secondQuestion],
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 2,
+              style: 1,
+              label: "a",
+              custom_id: "con1",
+            },
+            {
+              type: 2,
+              style: 1,
+              label: "b",
+              custom_id: "con2",
+            },
+            {
+              type: 2,
+              style: 1,
+              label: "c",
+              custom_id: "iq",
+            },
+          ],
+        },
+      ],
+    });
   },
 });
