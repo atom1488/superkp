@@ -1,7 +1,15 @@
 import { Command } from "../../structures/Command";
 import { ChannelType, EmbedBuilder } from "discord.js";
 
+// Map pour limité l'utilisation du test de QI
 const userUsage = new Map();
+
+// Array avec plusieurs gifs
+const gifs = [
+  "https://tenor.com/view/monkey-cool-swag-lavy-gangster-gif-25294031",
+  "https://tenor.com/view/homelander-speech-bubble-the-boys-upset-crying-gif-26284753",
+  "https://tenor.com/view/ouch-power-ranger-gif-14370780",
+];
 
 export default new Command({
   name: "iqtest",
@@ -11,9 +19,13 @@ export default new Command({
       return;
     }
 
+    let incorrectAnswers = []; // Array qui stock les réponses incorrects
+
     const userId = interaction.user.id;
     if (userUsage.has(userId) && userUsage.get(userId) >= 2) {
-      await interaction.followUp("Tu as déjà effectué le test de QI deux fois. Tu ne peux plus le refaire.");
+      await interaction.followUp(
+        "Tu as déjà effectué le test de QI deux fois. Tu ne peux plus le refaire."
+      );
       return;
     }
 
@@ -23,9 +35,34 @@ export default new Command({
       userUsage.set(userId, userUsage.get(userId) + 1);
     }
 
-    let createdChannel = await interaction.guild?.channels.create({
+    // Vérifie si "testqi" existe
+    let testqiCategory = interaction.guild.channels.cache.find(
+      (channel) =>
+        channel.type === ChannelType.GuildCategory && channel.name === "testqi"
+    );
+
+    // Si la catégorie "testqi" n'existe pas, elle est créée
+    if (!testqiCategory) {
+      testqiCategory = await interaction.guild.channels.create({
+        name: "testqi",
+        type: ChannelType.GuildCategory,
+      });
+    }
+
+    let createdChannel = await interaction.guild.channels.create({
       name: interaction.user.username,
       type: ChannelType.GuildText,
+      parent: testqiCategory.id,
+      permissionOverwrites: [
+        {
+          id: interaction.user.id,
+          allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"],
+        },
+        {
+          id: interaction.guild.roles.everyone,
+          deny: ["ViewChannel"], // Les autres rôles ne peuvent pas voir le salon
+        },
+      ],
     });
 
     let score = 5;
@@ -33,8 +70,13 @@ export default new Command({
 
     const sendMessage = async (content) => {
       if (!channelDeleted) {
-        await createdChannel.send(`<@${interaction.user.id}>, ${content}`);
+        await createdChannel.send({ content });
       }
+    };
+
+    const randomGif = (gifArray) => {
+      const randomIndex = Math.floor(Math.random() * gifArray.length);
+      return gifArray[randomIndex];
     };
 
     const askQuestion = async (question, options) => {
@@ -53,7 +95,10 @@ export default new Command({
         })),
       };
 
-      const message = await createdChannel.send({ embeds: [embed], components: [components] });
+      const message = await createdChannel.send({
+        embeds: [embed],
+        components: [components],
+      });
 
       try {
         const answer = await message.awaitMessageComponent({
@@ -61,14 +106,20 @@ export default new Command({
           time: 60000,
         });
 
-        if (options.some((option) => option.custom_id === answer.customId && option.custom_id !== "iq")) {
+        if (
+          options.some(
+            (option) =>
+              option.custom_id === answer.customId && option.custom_id !== "iq"
+          )
+        ) {
           score -= 1;
+          incorrectAnswers.push(question.description); // Ajoute la mauvaise réponse à l'Array
         }
 
         await answer.update({ components: [] });
       } catch (err) {
-        createdChannel.delete().catch(() => { });
-        interaction.member.kick("Reponse trop lente").catch(() => { });
+        createdChannel.delete().catch(() => {});
+        interaction.member.kick("Reponse trop lente").catch(() => {});
         channelDeleted = true; // Mettre à jour la variable pour indiquer que le salon a été supprimé
         return interaction.followUp({ content: "Trop lent" });
       }
@@ -77,9 +128,9 @@ export default new Command({
     const collectorFilter = (i) => i.user.id === interaction.user.id;
 
     await sendMessage(
-      "Bienvenue sur l'Appel du Vide, pour entrer sur le serveur, tu vas devoir répondre à un test de QI de 5 questions. Bonne chance!"
+      `<@${interaction.user.id}>, Bienvenue sur l'Appel du Vide, pour entrer sur le serveur, tu vas devoir répondre à un Test de QI de 5 questions.\nBonne chance!`
     );
-
+    await sendMessage(randomGif(gifs));
 
     const questions = [
       {
@@ -107,8 +158,14 @@ export default new Command({
         description: "À quoi sert le Sénat ?",
         options: [
           { label: "Il vote des projets de lois", custom_id: "iq" },
-          { label: "Il contribue à voter les lois municipales", custom_id: "con2" },
-          { label: "Il contribue à voter les lois fédérales de la France", custom_id: "con1" },
+          {
+            label: "Il contribue à voter les lois municipales",
+            custom_id: "con2",
+          },
+          {
+            label: "Il contribue à voter les lois fédérales de la France",
+            custom_id: "con1",
+          },
         ],
       },
       {
@@ -142,7 +199,19 @@ export default new Command({
       }
     }
 
-    if (!channelDeleted)
-      interaction.followUp({ content: `Ton score est de ${score}/5` });
+    if (!channelDeleted) {
+      let feedbackMessage = `Ton score est de ${score}/5.`;
+
+      if (incorrectAnswers.length > 0) {
+        feedbackMessage += `\nTu t'es trompé aux questions suivantes :\``;
+        for (const index of incorrectAnswers) {
+          feedbackMessage += `\n${index}`;
+        }
+        feedbackMessage += "`";
+      }
+      interaction.followUp({
+        content: `${feedbackMessage}`,
+      });
+    }
   },
 });
