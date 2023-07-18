@@ -4,6 +4,8 @@ import { ChannelType, EmbedBuilder } from "discord.js";
 // Map pour limité l'utilisation du test de QI
 const userUsage = new Map();
 
+type OptionType = { label: string; custom_id: string };
+
 // Array avec plusieurs gifs
 const gifs = [
   "https://tenor.com/view/monkey-cool-swag-lavy-gangster-gif-25294031",
@@ -68,18 +70,18 @@ export default new Command({
     let score = 5;
     let channelDeleted = false; // Variable pour vérifier si le salon a été supprimé
 
-    const sendMessage = async (content) => {
+    const sendMessage = async (content: string) => {
       if (!channelDeleted) {
         await createdChannel.send({ content });
       }
     };
 
-    const randomGif = (gifArray) => {
+    const randomGif = (gifArray: string[]) => {
       const randomIndex = Math.floor(Math.random() * gifArray.length);
       return gifArray[randomIndex];
     };
 
-    const askQuestion = async (question, options) => {
+    const askQuestion = async (question, options: OptionType[]) => {
       const embed = new EmbedBuilder()
         .setColor("DarkAqua")
         .setTitle(question.title)
@@ -112,8 +114,13 @@ export default new Command({
               option.custom_id === answer.customId && option.custom_id !== "iq"
           )
         ) {
+          const selectedOption = options.find(
+            (option) => option.custom_id === answer.customId
+          ); // Selectionne la réponse de l'utilisateur
           score -= 1;
-          incorrectAnswers.push(question.description); // Ajoute la mauvaise réponse à l'Array
+          incorrectAnswers.push(
+            `${question.description}: ${selectedOption.label}`
+          ); // Ajoute la mauvaise réponse à l'Array
         }
 
         await answer.update({ components: [] });
@@ -128,7 +135,7 @@ export default new Command({
     const collectorFilter = (i) => i.user.id === interaction.user.id;
 
     await sendMessage(
-      `<@${interaction.user.id}>, Bienvenue sur l'Appel du Vide, pour entrer sur le serveur, tu vas devoir répondre à un Test de QI de 5 questions.\nBonne chance!`
+      `<@${interaction.user.id}>, bienvenue sur **L'Appel du Vide**, pour entrer sur le serveur, tu vas devoir répondre à un Test de QI de 5 questions.\n* Bonne chance!`
     );
     await sendMessage(randomGif(gifs));
 
@@ -200,6 +207,7 @@ export default new Command({
     }
 
     if (!channelDeleted) {
+      createdChannel.delete();
       let feedbackMessage = `Ton score est de ${score}/5.`;
 
       if (incorrectAnswers.length > 0) {
