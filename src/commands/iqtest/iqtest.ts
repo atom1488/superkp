@@ -1,8 +1,10 @@
 import { Command } from "../../structures/Command";
-import { ChannelType, EmbedBuilder } from "discord.js";
+import { ChannelType, EmbedBuilder, TextChannel } from "discord.js";
 
 // Map pour limité l'utilisation du test de QI
 const userUsage = new Map();
+// Map pour qu'un utilisateur ne puisse pas faire plusieurs fois le test de QI
+const userHasIQ = new Map();
 
 type OptionType = { label: string; custom_id: string };
 
@@ -24,9 +26,9 @@ export default new Command({
     let incorrectAnswers = []; // Array qui stock les réponses incorrects
 
     const userId = interaction.user.id;
-    if (userUsage.has(userId) && userUsage.get(userId) >= 2) {
+    if (userUsage.has(userId)) {
       await interaction.followUp(
-        "Tu as déjà effectué le test de QI deux fois. Tu ne peux plus le refaire."
+        "Tu as déjà effectué le test de QI. Tu ne peux plus le refaire."
       );
       return;
     }
@@ -105,7 +107,7 @@ export default new Command({
       try {
         const answer = await message.awaitMessageComponent({
           filter: collectorFilter,
-          time: 60000,
+          time: 120000,
         });
 
         if (
@@ -126,16 +128,16 @@ export default new Command({
         await answer.update({ components: [] });
       } catch (err) {
         createdChannel.delete().catch(() => {});
-        interaction.member.kick("Reponse trop lente").catch(() => {});
         channelDeleted = true; // Mettre à jour la variable pour indiquer que le salon a été supprimé
         return interaction.followUp({ content: "Trop lent" });
       }
     };
 
-    const collectorFilter = (i) => i.user.id === interaction.user.id;
+    const collectorFilter = (i: { user: { id: string } }) =>
+      i.user.id === interaction.user.id;
 
     await sendMessage(
-      `<@${interaction.user.id}>, bienvenue sur **L'Appel du Vide**, pour entrer sur le serveur, tu vas devoir répondre à un Test de QI de 5 questions.\n* Bonne chance!`
+      `<@${interaction.member.user.id}>, bienvenue sur **L'Appel du Vide**, pour entrer sur le serveur, tu vas devoir répondre à un Test de QI de 5 questions.\n* Bonne chance!\n## Tu as 2 minutes de temps de réponse pour chaque question`
     );
     await sendMessage(randomGif(gifs));
 
@@ -217,9 +219,41 @@ export default new Command({
         }
         feedbackMessage += "`";
       }
-      interaction.followUp({
-        content: `${feedbackMessage}`,
-      });
+
+      if (userHasIQ.has(userId)) {
+        return; // Ne pas donner le role de QI.
+      }
+      // Attribution du role par rapport au score :
+      const scoreRoleMap: { [key: number]: string } = {
+        0: "Mangeur de Mafé",
+        1: "Mangeur de Mafé",
+        2: "Mangeur de Mafé",
+        3: "ADS",
+        4: "ADS",
+        5: "chooo",
+      };
+
+      const roleName = scoreRoleMap[score];
+      if (roleName) {
+        const role = interaction.member.guild.roles.cache.find(
+          (role) => role.name === roleName
+        );
+        try {
+          userHasIQ.set(userId, 1); // Indiquer au Map() que l'utilisateur a déjà fait le test
+          interaction.member.roles.add(role);
+        } catch (err) {
+          console.log(err);
+        }
+      }
+
+      try {
+        const sendChannel = interaction.member.guild.channels.cache.find(
+          (channel) => channel.name === "general"
+        ) as TextChannel;
+        await interaction.followUp({ content: feedbackMessage });
+      } catch (err) {
+        console.log(err);
+      }
     }
   },
 });
