@@ -1,4 +1,4 @@
-import { ClientEvents } from 'discord.js';
+import { ClientEvents } from "discord.js";
 
 //export class Event<Key extends keyof ClientEvents> {
 
@@ -7,5 +7,8 @@ export interface ExtendedEvents extends ClientEvents {
 }
 
 export class Event<Key extends keyof ExtendedEvents> {
-  constructor(public event: Key, public run: (...args: ExtendedEvents[Key]) => any) {}
+  constructor(
+    public event: Key,
+    public run: (...args: ExtendedEvents[Key]) => any
+  ) {}
 }

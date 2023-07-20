@@ -1,10 +1,16 @@
-import { ApplicationCommandDataResolvable, Client, Collection, GatewayIntentBits, IntentsBitField, Partials } from 'discord.js';
-import { CommandType } from '../typings/Command';
-import { RegisterCommandsOptions } from '../typings/client';
-import { Event } from './Event';
-import { ExtendedEvents } from './Event';
-import { promisify } from 'util';
-import glob from 'glob';
+import {
+  Client,
+  Collection,
+  GatewayIntentBits,
+  Partials,
+  ApplicationCommandData,
+} from "discord.js";
+import { CommandType } from "../typings/Command";
+import { RegisterCommandsOptions } from "../typings/client";
+import { Event } from "./Event";
+import { ExtendedEvents } from "./Event";
+import { promisify } from "util";
+import glob from "glob";
 
 const globPromise = promisify(glob);
 
@@ -21,7 +27,13 @@ export class ExtendedClient extends Client {
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildIntegrations,
       ],
-      partials: [Partials.User, Partials.Channel, Partials.GuildMember, Partials.Message, Partials.Reaction],
+      partials: [
+        Partials.User,
+        Partials.Channel,
+        Partials.GuildMember,
+        Partials.Message,
+        Partials.Reaction,
+      ],
     });
   }
 
@@ -31,46 +43,61 @@ export class ExtendedClient extends Client {
   }
 
   async importFile(filePath: string) {
-    return (await import(filePath))?.default;
+    try {
+      const module = await import(filePath);
+      return module.default;
+    } catch (e) {
+      console.log(`❌ Error: ${e}`);
+      return null;
+    }
   }
 
   async registerCommands({ commands, guildId }: RegisterCommandsOptions) {
-    if (guildId) {
-      this.guilds.cache.get(guildId)?.commands.set(commands);
-      console.log(`\nRegistering commands to ${guildId}`);
-    } else {
-      this.application?.commands.set(commands);
-      console.log('\nRegistering global commands');
-    }
+    const target = guildId ? this.guilds.cache.get(guildId) : this.application;
+    if (!target) return;
+
+    await target.commands.set(commands);
+    console.log(
+      guildId
+        ? `\nRegistering commands to ${guildId}`
+        : "\nRegistering global commands"
+    );
   }
 
   async registerModules() {
     // Commands
-    const slashCommands: ApplicationCommandDataResolvable[] = [];
-    const commandFiles = await globPromise((__dirname + '\\..\\commands\\**\\*.{ts,js}').replace(/\\/g, '/'));
-    commandFiles.forEach(async (filePath) => {
-      const command: CommandType = await this.importFile(filePath).catch((e) => {
-        console.log(`❌ Error: ${e}`);
-      });
-      if (!command.name) return;
+    const slashCommands: ApplicationCommandData[] = [];
+    const commandFiles = await globPromise(
+      (__dirname + "/..//commands//**//*.ts").replace(/\\/g, "/")
+    );
+    for (const filePath of commandFiles) {
+      const command: CommandType = await this.importFile(filePath);
+      if (!command || !command.name) continue;
       console.log(`☑️  ${command.name} loaded.`);
 
       this.commands.set(command.name.toLowerCase(), command);
       slashCommands.push(command);
-    });
+    }
 
-    this.on('ready', () => {
-      this.registerCommands({
+    // Register Commands
+    this.on("ready", async () => {
+      await this.registerCommands({
         commands: slashCommands,
         guildId: process.env.guildId,
       });
     });
 
     // Events
-    const eventFiles = await globPromise((__dirname + '\\..\\events\\*.{ts,js}').replace(/\\/g, '/'));
-    eventFiles.forEach(async (filePath) => {
-      const event: Event<keyof ExtendedEvents> = await this.importFile(filePath);
+    const eventFiles = await globPromise(
+      (__dirname + "/..//events//*.{ts,js}").replace(/\\/g, "/")
+    );
+    for (const filePath of eventFiles) {
+      const event: Event<keyof ExtendedEvents> = await this.importFile(
+        filePath
+      );
+      if (!event || !event.event) continue;
+
       this.on(event.event as string, event.run);
-    });
+    }
   }
 }

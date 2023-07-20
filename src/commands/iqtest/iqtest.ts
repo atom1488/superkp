@@ -1,343 +1,259 @@
 import { Command } from "../../structures/Command";
-import { ChannelType, EmbedBuilder } from "discord.js";
+import { ChannelType, EmbedBuilder, TextChannel } from "discord.js";
+
+// Map pour limité l'utilisation du test de QI
+const userUsage = new Map();
+// Map pour qu'un utilisateur ne puisse pas faire plusieurs fois le test de QI
+const userHasIQ = new Map();
+
+type OptionType = { label: string; custom_id: string };
+
+// Array avec plusieurs gifs
+const gifs = [
+  "https://tenor.com/view/monkey-cool-swag-lavy-gangster-gif-25294031",
+  "https://tenor.com/view/homelander-speech-bubble-the-boys-upset-crying-gif-26284753",
+  "https://tenor.com/view/ouch-power-ranger-gif-14370780",
+];
 
 export default new Command({
   name: "iqtest",
-  description: "reponds en envoyant le TEST DE QI",
+  description: "Reponds en envoyant le TEST DE QI",
   run: async ({ interaction }) => {
     if (interaction.guild.id === "423517770622304274") {
       return;
     }
 
-    let createdChannel = await interaction.guild?.channels.create({
+    let incorrectAnswers = []; // Array qui stock les réponses incorrects
+
+    const userId = interaction.user.id;
+    if (userUsage.has(userId)) {
+      await interaction.followUp(
+        "Tu as déjà effectué le test de QI. Tu ne peux plus le refaire."
+      );
+      return;
+    }
+
+    if (!userUsage.has(userId)) {
+      userUsage.set(userId, 1);
+    } else {
+      userUsage.set(userId, userUsage.get(userId) + 1);
+    }
+
+    // Vérifie si "testqi" existe
+    let testqiCategory = interaction.guild.channels.cache.find(
+      (channel) =>
+        channel.type === ChannelType.GuildCategory && channel.name === "testqi"
+    );
+
+    // Si la catégorie "testqi" n'existe pas, elle est créée
+    if (!testqiCategory) {
+      testqiCategory = await interaction.guild.channels.create({
+        name: "testqi",
+        type: ChannelType.GuildCategory,
+      });
+    }
+
+    let createdChannel = await interaction.guild.channels.create({
       name: interaction.user.username,
       type: ChannelType.GuildText,
+      parent: testqiCategory.id,
+      permissionOverwrites: [
+        {
+          id: interaction.user.id,
+          allow: ["ViewChannel", "SendMessages", "ReadMessageHistory"],
+        },
+        {
+          id: interaction.guild.roles.everyone,
+          deny: ["ViewChannel"], // Les autres rôles ne peuvent pas voir le salon
+        },
+      ],
     });
 
     let score = 5;
+    let channelDeleted = false; // Variable pour vérifier si le salon a été supprimé
 
-    const firstQuestion = new EmbedBuilder()
-      .setColor("DarkAqua")
-      .setTitle("Première Question")
-      .setDescription("Où se situe le Maghreb ?");
+    const sendMessage = async (content: string) => {
+      if (!channelDeleted) {
+        await createdChannel.send({ content });
+      }
+    };
 
-    await createdChannel.send(
-      `<@${interaction.user.id}>, bienvenue sur l'Appel du Vide, pour entrer sur le serveur, tu vas devoir répondre à un test de QI de 5 questions. Bonne chance!`
+    const randomGif = (gifArray: string[]) => {
+      const randomIndex = Math.floor(Math.random() * gifArray.length);
+      return gifArray[randomIndex];
+    };
+
+    const askQuestion = async (question, options: OptionType[]) => {
+      const embed = new EmbedBuilder()
+        .setColor("DarkAqua")
+        .setTitle(question.title)
+        .setDescription(question.description);
+
+      const components = {
+        type: 1,
+        components: options.map((option) => ({
+          type: 2,
+          style: 1,
+          label: option.label,
+          custom_id: option.custom_id,
+        })),
+      };
+
+      const message = await createdChannel.send({
+        embeds: [embed],
+        components: [components],
+      });
+
+      try {
+        const answer = await message.awaitMessageComponent({
+          filter: collectorFilter,
+          time: 120000,
+        });
+
+        if (
+          options.some(
+            (option) =>
+              option.custom_id === answer.customId && option.custom_id !== "iq"
+          )
+        ) {
+          const selectedOption = options.find(
+            (option) => option.custom_id === answer.customId
+          ); // Selectionne la réponse de l'utilisateur
+          score -= 1;
+          incorrectAnswers.push(
+            `${question.description}: ${selectedOption.label}`
+          ); // Ajoute la mauvaise réponse à l'Array
+        }
+
+        await answer.update({ components: [] });
+      } catch (err) {
+        createdChannel.delete().catch(() => {});
+        channelDeleted = true; // Mettre à jour la variable pour indiquer que le salon a été supprimé
+        return interaction.followUp({ content: "Trop lent" });
+      }
+    };
+
+    const collectorFilter = (i: { user: { id: string } }) =>
+      i.user.id === interaction.user.id;
+
+    await sendMessage(
+      `<@${interaction.member.user.id}>, bienvenue sur **L'Appel du Vide**, pour entrer sur le serveur, tu vas devoir répondre à un Test de QI de 5 questions.\n* Bonne chance!\n## Tu as 2 minutes de temps de réponse pour chaque question`
     );
+    await sendMessage(randomGif(gifs));
 
-    // A: Moyen-Orient
-    // B: Région Parisienne
-    // C: Afrique du Nord
+    const questions = [
+      {
+        title: "Première Question",
+        description: "Où se situe le Maghreb ?",
+        options: [
+          { label: "Moyen-Orient", custom_id: "con1" },
+          { label: "Région Parisienne", custom_id: "con2" },
+          { label: "Afrique du Nord", custom_id: "iq" },
+        ],
+      },
+      {
+        title: "Seconde Question",
+        description: "Parmi ces livres, lequel appartient à Socrate ?",
+        options: [
+          { label: "La République", custom_id: "con1" },
+          { label: "Humain trop humain", custom_id: "con2" },
+          { label: "Du contrat social", custom_id: "con3" },
+          { label: "La république et la Res publica", custom_id: "con4" },
+          { label: "Socrate n'a jamais écrit de livre", custom_id: "iq" },
+        ],
+      },
+      {
+        title: "Troisième Question",
+        description: "À quoi sert le Sénat ?",
+        options: [
+          { label: "Il vote des projets de lois", custom_id: "iq" },
+          {
+            label: "Il contribue à voter les lois municipales",
+            custom_id: "con2",
+          },
+          {
+            label: "Il contribue à voter les lois fédérales de la France",
+            custom_id: "con1",
+          },
+        ],
+      },
+      {
+        title: "Quatrième Question",
+        description: "Que signifie OPJ ?",
+        options: [
+          { label: "Officier de Paix Judiciaire", custom_id: "con1" },
+          { label: "Officier de Police Judiciaire", custom_id: "iq" },
+          { label: "Officier de Police Juridique", custom_id: "con3" },
+          { label: "Officier de Police Justice", custom_id: "con2" },
+        ],
+      },
+      {
+        title: "Cinquième Question",
+        description: "Quel est la dérivé de 3x² ?",
+        options: [
+          { label: "9x²", custom_id: "con1" },
+          { label: "6x", custom_id: "iq" },
+          { label: "9x", custom_id: "con3" },
+          { label: "3x³", custom_id: "con2" },
+        ],
+      },
+    ];
 
-    const question1 = await createdChannel.send({
-      embeds: [firstQuestion],
-      components: [
-        {
-          type: 1,
-          components: [
-            {
-              type: 2,
-              style: 1,
-              label: "Moyen-Orient",
-              custom_id: "con1",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "Région Parisienne",
-              custom_id: "con2",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "Afrique du Nord",
-              custom_id: "iq",
-            },
-          ],
-        },
-      ],
-    });
+    for (const question of questions) {
+      await askQuestion(question, question.options);
 
-    const collectorFilter = (i) => i.user.id === interaction.user.id;
-
-    try {
-      const answer = await question1.awaitMessageComponent({
-        filter: collectorFilter,
-        time: 60000,
-      });
-
-      if (answer.customId === "con1" || answer.customId === "con2") {
-        score -= 1;
-        await answer.update({ components: [] });
-      } else if (answer.customId === "iq") {
-        await answer.update({ components: [] });
+      // Vérifier si le salon a été supprimé avant de continuer la boucle
+      if (channelDeleted) {
+        break;
       }
-    } catch (err) {
+    }
+
+    if (!channelDeleted) {
       createdChannel.delete();
-      interaction.member.kick("Reponse trop lente");
-    }
+      let feedbackMessage = `Ton score est de ${score}/5.`;
 
-    const secondQuestion = new EmbedBuilder()
-      .setColor("DarkAqua")
-      .setTitle("Seconde Question")
-      .setDescription("Parmi ces livres, lequel appartient à Socrate ?");
-
-    // A - "La République" ;
-    // B - "Humain trop humain" ;
-    // C - "Du contrat social" ;
-    // D - "La république et la Res publica" ;
-    // E - "Socrate n'a jamais écrit de livre"
-
-    const question2 = await createdChannel.send({
-      embeds: [secondQuestion],
-      components: [
-        {
-          type: 1,
-          components: [
-            {
-              type: 2,
-              style: 1,
-              label: "La République",
-              custom_id: "con1",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "Humain trop humain",
-              custom_id: "con2",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "Du contrat social",
-              custom_id: "con3",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "La république et la Res publica",
-              custom_id: "con4",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "Socrate n'a jamais écrit de livre",
-              custom_id: "iq",
-            },
-          ],
-        },
-      ],
-    });
-
-    try {
-      const answer = await question2.awaitMessageComponent({
-        filter: collectorFilter,
-        time: 60000,
-      });
-
-      if (
-        answer.customId === "con1" ||
-        answer.customId === "con2" ||
-        answer.customId === "con3" ||
-        answer.customId === "con4"
-      ) {
-        score -= 1;
-        await answer.update({ components: [] });
-      } else if (answer.customId === "iq") {
-        await answer.update({ components: [] });
+      if (incorrectAnswers.length > 0) {
+        feedbackMessage += `\nTu t'es trompé aux questions suivantes :\``;
+        for (const index of incorrectAnswers) {
+          feedbackMessage += `\n${index}`;
+        }
+        feedbackMessage += "`";
       }
-    } catch (err) {
-      createdChannel.delete().catch(() => {});
-      interaction.member.kick("Reponse trop lente");
-    }
 
-    const troisiemeQuestion = new EmbedBuilder()
-      .setColor("DarkAqua")
-      .setTitle("Troisième Question")
-      .setDescription("À quoi sert le Sénat ?");
-
-    // A Il contribue à voter les lois fédérales de la France ;
-    // B Il contribue à voter les lois municipales ;
-    // C Il vote des projets de lois.
-
-    const question3 = await createdChannel.send({
-      embeds: [troisiemeQuestion],
-      components: [
-        {
-          type: 1,
-          components: [
-            {
-              type: 2,
-              style: 1,
-              label: "Il vote des projets de lois",
-              custom_id: "iq",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "Il contribue à voter les lois municipales",
-              custom_id: "con2",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "Il contribue à voter les lois fédérales de la France",
-              custom_id: "con1",
-            },
-          ],
-        },
-      ],
-    });
-
-    try {
-      const answer = await question3.awaitMessageComponent({
-        filter: collectorFilter,
-        time: 60000,
-      });
-
-      if (answer.customId === "con1" || answer.customId === "con2") {
-        score -= 1;
-        await answer.update({ components: [] });
-      } else if (answer.customId === "iq") {
-        await answer.update({ components: [] });
+      if (userHasIQ.has(userId)) {
+        return; // Ne pas donner le role de QI.
       }
-    } catch (err) {
-      createdChannel.delete().catch(() => {});
-      interaction.member.kick("Reponse trop lente");
-    }
+      // Attribution du role par rapport au score :
+      const scoreRoleMap: { [key: number]: string } = {
+        0: "Mangeur de Mafé",
+        1: "Mangeur de Mafé",
+        2: "Mangeur de Mafé",
+        3: "ADS",
+        4: "ADS",
+        5: "chooo",
+      };
 
-    const quatriemeQuestion = new EmbedBuilder()
-      .setColor("DarkAqua")
-      .setTitle("Quatrième Question")
-      .setDescription("Que signifie OPJ ?");
-
-    // A - Officier de Paix Judiciaire ;
-    // B - Officier de Police Justice ;
-    // C - Officier de Police Juridique ;
-    // D - Officier de Police Judiciaire
-
-    const question4 = await createdChannel.send({
-      embeds: [quatriemeQuestion],
-      components: [
-        {
-          type: 1,
-          components: [
-            {
-              type: 2,
-              style: 1,
-              label: "Officier de Paix Judiciaire",
-              custom_id: "con1",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "Officier de Police Judiciaire",
-              custom_id: "iq",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "Officier de Police Juridique",
-              custom_id: "con3",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "Officier de Police Justice",
-              custom_id: "con2",
-            },
-          ],
-        },
-      ],
-    });
-
-    try {
-      const answer = await question4.awaitMessageComponent({
-        filter: collectorFilter,
-        time: 60000,
-      });
-
-      if (
-        answer.customId === "con1" ||
-        answer.customId === "con2" ||
-        answer.customId === "con3"
-      ) {
-        score -= 1;
-        await answer.update({ components: [] });
-      } else if (answer.customId === "iq") {
-        await answer.update({ components: [] });
+      const roleName = scoreRoleMap[score];
+      if (roleName) {
+        const role = interaction.member.guild.roles.cache.find(
+          (role) => role.name === roleName
+        );
+        try {
+          userHasIQ.set(userId, 1); // Indiquer au Map() que l'utilisateur a déjà fait le test
+          interaction.member.roles.add(role);
+        } catch (err) {
+          console.log(err);
+        }
       }
-    } catch (err) {
-      createdChannel.delete().catch(() => {});
-      interaction.member.kick("Reponse trop lente");
-    }
 
-    const cinquiemeQuestion = new EmbedBuilder()
-      .setColor("DarkAqua")
-      .setTitle("Cinquième Question")
-      .setDescription("Quel est la dérivé de 3x² ?");
-
-    // A - 9x²;
-    // B - 3x ;
-    // C - 9x ;
-    // D - 3x
-
-    const question5 = await createdChannel.send({
-      embeds: [cinquiemeQuestion],
-      components: [
-        {
-          type: 1,
-          components: [
-            {
-              type: 2,
-              style: 1,
-              label: "9x²",
-              custom_id: "con1",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "6x",
-              custom_id: "iq",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "9x",
-              custom_id: "con3",
-            },
-            {
-              type: 2,
-              style: 1,
-              label: "3x³",
-              custom_id: "con2",
-            },
-          ],
-        },
-      ],
-    });
-
-    try {
-      const answer = await question5.awaitMessageComponent({
-        filter: collectorFilter,
-        time: 60000,
-      });
-
-      if (
-        answer.customId === "con1" ||
-        answer.customId === "con2" ||
-        answer.customId === "con3"
-      ) {
-        score -= 1;
-        await answer.update({ components: [] });
-      } else if (answer.customId === "iq") {
-        await answer.update({ components: [] });
+      try {
+        const sendChannel = interaction.member.guild.channels.cache.find(
+          (channel) => channel.name === "general"
+        ) as TextChannel;
+        await interaction.followUp({ content: feedbackMessage });
+      } catch (err) {
+        console.log(err);
       }
-    } catch (err) {
-      createdChannel.delete().catch(() => {});
-      interaction.member.kick("Reponse trop lente");
     }
-
-    interaction.followUp({ content: `Ton score est de ${score}/5` });
   },
 });
